@@ -4,413 +4,117 @@
 @tailwind components;
 @tailwind utilities;
 
-/* ============================================================
-   CSS CUSTOM PROPERTIES — LEMON THEME
-   Two themes: default (yellow+green) and pink lemonade.
-   Toggle by adding class "pink-mode" to <html>.
-============================================================ */
 :root {
   --lemon-bright:  #FFE135;
   --lemon-pale:    #FFF9D6;
   --lemon-cream:   #FFFDF0;
   --lemon-zest:    #F0A500;
   --lemon-rind:    #7A6000;
-  --lemon-shadow:  rgba(180, 150, 0, 0.18);
-
+  --lemon-shadow:  rgba(180,150,0,0.18);
   --accent:        #6B9E2A;
   --accent-lt:     #D4ECA0;
   --accent-dark:   #3D6010;
-
   --text-dark:     #1E1E0F;
   --text-mid:      #4A4A2A;
   --text-light:    #888860;
-
   --bg-hero:       #FFFDF0;
   --bg-about:      #F2FAE4;
   --bg-projects:   #FFFBE0;
   --bg-experience: #EDF7D8;
   --bg-contact:    #FFE135;
-
   --wood-dark:     #8B5E2A;
   --wood-mid:      #B07840;
   --wood-light:    #D4A060;
-
   --font-display:  'Fraunces', Georgia, serif;
   --font-body:     'DM Sans', sans-serif;
-
-  --radius-sm:     8px;
-  --radius-md:     16px;
-  --radius-lg:     24px;
-  --radius-xl:     40px;
+  --radius-sm: 8px; --radius-md: 16px; --radius-lg: 24px; --radius-xl: 40px;
 }
 
-/* Pink lemonade mode */
+/* PINK MODE — yellows → pink, greens stay */
 html.pink-mode {
-  --accent:        #C85A88;
-  --accent-lt:     #FAD0E0;
-  --accent-dark:   #7A2050;
-  --bg-about:      #FDE8F2;
-  --bg-experience: #FCE0EE;
-  --lemon-shadow:  rgba(180, 80, 130, 0.18);
+  --lemon-bright:  #F472B6;
+  --lemon-pale:    #FCE7F3;
+  --lemon-cream:   #FDF2F8;
+  --lemon-zest:    #DB2777;
+  --lemon-rind:    #831843;
+  --lemon-shadow:  rgba(219,39,119,0.18);
+  --bg-hero:       #FDF2F8;
+  --bg-projects:   #FCE7F3;
+  --bg-contact:    #F472B6;
 }
 
-/* ============================================================
-   BASE RESET
-============================================================ */
-*, *::before, *::after {
-  box-sizing: border-box;
-  margin: 0;
-  padding: 0;
-}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{font-family:var(--font-body);color:var(--text-dark);background:var(--bg-hero);overflow-x:hidden;-webkit-font-smoothing:antialiased}
 
-html {
-  scroll-behavior: smooth;
-  font-size: 16px;
-}
+#scroll-bar{position:fixed;top:0;left:0;height:3px;width:0%;background:linear-gradient(90deg,var(--accent),var(--lemon-bright),var(--lemon-zest));z-index:1000;transition:width .06s linear;pointer-events:none}
 
-body {
-  font-family: var(--font-body);
-  color: var(--text-dark);
-  background: var(--bg-hero);
-  overflow-x: hidden;
-  -webkit-font-smoothing: antialiased;
-}
+.juice-drop{position:fixed;border-radius:50%;pointer-events:none;z-index:9998;animation:juiceOut .5s ease-out forwards}
+@keyframes juiceOut{0%{opacity:.85;transform:translate(0,0) scale(1)}100%{opacity:0;transform:translate(var(--dx,0px),var(--dy,-30px)) scale(0.1)}}
 
-/* ============================================================
-   SCROLL PROGRESS BAR
-============================================================ */
-#scroll-bar {
-  position: fixed;
-  top: 0; left: 0;
-  height: 3px;
-  width: 0%;
-  background: linear-gradient(90deg, var(--accent), var(--lemon-bright), var(--lemon-zest));
-  z-index: 1000;
-  transition: width 0.06s linear;
-  pointer-events: none;
-}
+/* Reveal — fast */
+.reveal{opacity:0;transform:translateY(18px);transition:opacity .32s ease,transform .32s ease}
+.reveal.visible{opacity:1;transform:translateY(0)}
+.reveal.delay-1{transition-delay:.05s}
+.reveal.delay-2{transition-delay:.10s}
+.reveal.delay-3{transition-delay:.15s}
+.reveal.delay-4{transition-delay:.20s}
 
-/* ============================================================
-   JUICE SPLASH — click effect
-============================================================ */
-.juice-drop {
-  position: fixed;
-  border-radius: 50%;
-  pointer-events: none;
-  z-index: 9998;
-  animation: juiceOut 0.5s ease-out forwards;
-}
+/* Secret joke banner */
+.joke-banner{overflow:hidden;max-height:0;opacity:0;transition:max-height .5s ease,opacity .4s ease}
+.joke-banner.revealed{max-height:160px;opacity:1}
 
-@keyframes juiceOut {
-  0%   { opacity: 0.85; transform: translate(0, 0) scale(1); }
-  100% { opacity: 0;    transform: translate(var(--dx, 0px), var(--dy, -30px)) scale(0.1); }
-}
+.wave-divider{display:block;width:100%;overflow:hidden;line-height:0}
+.wave-divider svg{display:block;width:100%}
 
-/* ============================================================
-   TYPOGRAPHY HELPERS
-============================================================ */
-.font-display {
-  font-family: var(--font-display);
-}
+.pill-label{display:inline-block;background:var(--lemon-bright);color:var(--lemon-rind);font-size:.7rem;font-weight:700;letter-spacing:.1em;text-transform:uppercase;padding:4px 14px;border-radius:999px}
 
-/* ============================================================
-   SCROLL REVEAL
-============================================================ */
-.reveal {
-  opacity: 0;
-  transform: translateY(28px);
-  transition: opacity 0.6s ease, transform 0.6s ease;
-}
+/* Chips — NOT clickable */
+.skill-chip{display:inline-block;background:var(--accent-lt);color:var(--accent-dark);border:1.5px solid var(--accent);border-radius:999px;padding:5px 14px;font-size:.8rem;font-weight:600;pointer-events:none;cursor:default;user-select:none}
 
-.reveal.visible {
-  opacity: 1;
-  transform: translateY(0);
-}
+/* Cutting boards */
+.board-card{background:var(--wood-mid);border:3px solid var(--wood-dark);border-radius:14px;box-shadow:4px 4px 0 var(--wood-dark);position:relative;transition:transform .2s ease,box-shadow .2s ease;overflow:hidden}
+.board-card::before{content:'';position:absolute;inset:7px;border:1.5px dashed rgba(255,255,255,.15);border-radius:8px;pointer-events:none}
+.board-card:nth-child(2){background:#9E6A30;border-color:#7A4E20;box-shadow:4px 4px 0 #7A4E20}
+.board-card:nth-child(3){background:var(--wood-light);border-color:var(--wood-mid);box-shadow:4px 4px 0 var(--wood-mid)}
+.board-card:hover{transform:rotate(-.5deg) scale(1.02);box-shadow:6px 6px 0 var(--wood-dark)}
 
-.reveal.delay-1 { transition-delay: 0.1s; }
-.reveal.delay-2 { transition-delay: 0.2s; }
-.reveal.delay-3 { transition-delay: 0.3s; }
-.reveal.delay-4 { transition-delay: 0.4s; }
+/* Carousel */
+.carousel-outer{overflow:hidden;position:relative;width:100%}
+.carousel-track{display:flex;align-items:center;will-change:transform;cursor:grab;user-select:none;touch-action:pan-y}
+.carousel-track.is-animating{transition:transform .42s cubic-bezier(.25,.46,.45,.94)}
+.carousel-track:active{cursor:grabbing}
+.project-card{flex-shrink:0;background:white;border-radius:var(--radius-lg);border:2px solid var(--lemon-bright);overflow:hidden;transition:transform .35s ease,box-shadow .35s ease,opacity .35s ease;transform:scale(.80);opacity:0}
+.project-card.is-adjacent{opacity:.82;transform:scale(.80)}
+.project-card.is-center{transform:scale(1.0);opacity:1;box-shadow:0 24px 56px var(--lemon-shadow);border-color:var(--accent);border-width:2.5px}
 
-/* ============================================================
-   WAVE DIVIDERS
-============================================================ */
-.wave-divider {
-  display: block;
-  width: 100%;
-  overflow: hidden;
-  line-height: 0;
-}
+/* Juicer scene */
+.juicer-scene{display:flex;align-items:flex-end;width:100%;pointer-events:none}
+.juicer-filler{flex:1;height:100%;overflow:hidden;display:none}
+@media(min-width:768px){.juicer-filler{display:block}}
+.juicer-center{flex-shrink:0;position:relative;display:flex;align-items:flex-end;justify-content:center}
+.lemon-d{position:absolute;bottom:0;left:0;width:100%;height:100%;display:flex;align-items:flex-end;justify-content:center;transform-origin:bottom center}
+.lemon-d.squeezing{animation:squeezeLemon .55s cubic-bezier(.34,1.56,.64,1) forwards}
+@keyframes squeezeLemon{0%{transform:translateY(0) scaleY(1)}30%{transform:translateY(22px) scaleY(.60)}60%{transform:translateY(16px) scaleY(.68)}80%{transform:translateY(4px) scaleY(.95)}100%{transform:translateY(0) scaleY(1)}}
 
-.wave-divider svg {
-  display: block;
-  width: 100%;
-}
+/* Timeline */
+.timeline-line{position:absolute;left:28px;top:0;bottom:0;width:3px;background:linear-gradient(180deg,var(--lemon-bright),var(--accent));border-radius:3px}
+.stir-marker{width:58px;height:58px;border-radius:50%;background:var(--lemon-bright);border:3px solid var(--accent);display:flex;align-items:center;justify-content:center;flex-shrink:0;position:relative;overflow:hidden;cursor:default;transition:background .2s,box-shadow .2s;box-shadow:0 2px 8px var(--lemon-shadow)}
+.stir-marker.active{background:var(--accent);box-shadow:0 4px 16px var(--lemon-shadow)}
+.stir-frame{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;opacity:0;transition:opacity .05s}
+.stir-frame.visible{opacity:1}
+.stir-frame img{width:36px;height:36px;object-fit:contain}
 
-/* ============================================================
-   CUTTING BOARD CARDS (About section fun facts)
-============================================================ */
-.board-card {
-  background: var(--wood-mid);
-  border: 3px solid var(--wood-dark);
-  border-radius: 14px;
-  box-shadow: 4px 4px 0 var(--wood-dark);
-  position: relative;
-  transition: transform 0.2s ease, box-shadow 0.2s ease;
-  overflow: hidden;
-}
+/* Recipe cards */
+.recipe-card{background:white;border:2px solid var(--lemon-bright);border-radius:var(--radius-lg);overflow:hidden;cursor:pointer;transition:transform .2s ease,box-shadow .2s ease}
+.recipe-card:nth-child(odd){transform:rotate(-.35deg)}
+.recipe-card:nth-child(even){transform:rotate(.35deg)}
+.recipe-card:hover{transform:rotate(0deg) translateY(-6px);box-shadow:0 14px 32px var(--lemon-shadow)}
 
-.board-card::before {
-  content: '';
-  position: absolute;
-  inset: 7px;
-  border: 1.5px dashed rgba(255,255,255,0.15);
-  border-radius: 8px;
-  pointer-events: none;
-}
+.nav-active{background:var(--lemon-bright) !important;color:var(--text-dark) !important}
 
-.board-card:nth-child(2) {
-  background: #9E6A30;
-  border-color: #7A4E20;
-  box-shadow: 4px 4px 0 #7A4E20;
-}
-
-.board-card:nth-child(3) {
-  background: var(--wood-light);
-  border-color: var(--wood-mid);
-  box-shadow: 4px 4px 0 var(--wood-mid);
-}
-
-.board-card:hover {
-  transform: rotate(-0.5deg) scale(1.02);
-  box-shadow: 6px 6px 0 var(--wood-dark);
-}
-
-/* ============================================================
-   CAROUSEL
-   The carousel is the most complex piece.
-   Key design decisions:
-   - Uses transform: translateX on a flex track
-   - Center card is scaled up via CSS class
-   - Infinite loop via clone strategy (prepend last N, append first N)
-   - Touch/drag support
-   - NO transition during clone-jump resets
-============================================================ */
-.carousel-outer {
-  overflow: hidden;
-  position: relative;
-  width: 100%;
-}
-
-.carousel-track {
-  display: flex;
-  align-items: center;
-  gap: 20px;
-  /* transition applied via JS class toggling */
-  will-change: transform;
-  cursor: grab;
-  user-select: none;
-}
-
-.carousel-track.is-animating {
-  transition: transform 0.45s cubic-bezier(0.25, 0.46, 0.45, 0.94);
-}
-
-.carousel-track:active {
-  cursor: grabbing;
-}
-
-.project-card {
-  flex: 0 0 300px;
-  background: white;
-  border-radius: var(--radius-lg);
-  border: 2px solid var(--lemon-bright);
-  overflow: hidden;
-  transition: transform 0.35s ease, box-shadow 0.35s ease, opacity 0.35s ease;
-  transform: scale(0.88);
-  opacity: 0.7;
-}
-
-.project-card.is-center {
-  transform: scale(1.05);
-  opacity: 1;
-  box-shadow: 0 20px 48px var(--lemon-shadow);
-  border-color: var(--accent);
-}
-
-.project-card:hover {
-  box-shadow: 0 12px 32px var(--lemon-shadow);
-}
-
-/* ============================================================
-   TIMELINE (Experience)
-============================================================ */
-.timeline-line {
-  position: absolute;
-  left: 22px;
-  top: 0;
-  bottom: 0;
-  width: 3px;
-  background: linear-gradient(180deg, var(--lemon-bright), var(--accent));
-  border-radius: 3px;
-}
-
-.stir-marker {
-  position: relative;
-  z-index: 1;
-  width: 46px;
-  height: 46px;
-  border-radius: 50%;
-  background: var(--lemon-bright);
-  border: 3px solid var(--accent);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  transition: transform 0.2s ease, background 0.2s ease;
-  cursor: default;
-  overflow: hidden;
-}
-
-/* Stir animation: 3-frame cycle triggered on hover via CSS animation */
-.stir-marker:hover {
-  background: var(--accent);
-  transform: scale(1.15) rotate(15deg);
-}
-
-.stir-icon {
-  font-size: 1.3rem;
-  transition: transform 0.15s ease;
-}
-
-.stir-marker:hover .stir-icon {
-  animation: stirSpin 0.5s ease-in-out infinite alternate;
-}
-
-@keyframes stirSpin {
-  0%   { transform: rotate(-20deg); }
-  100% { transform: rotate(20deg); }
-}
-
-/* ============================================================
-   JUICER SCENE (above carousel)
-============================================================ */
-.juicer-rig {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  transition: transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
-}
-
-.juicer-rig.squeeze {
-  transform: rotate(-16deg) scale(0.94);
-}
-
-.juice-drip {
-  width: 8px;
-  background: var(--lemon-bright);
-  border-radius: 0 0 8px 8px;
-  height: 0;
-  transition: height 0.4s ease;
-  margin-top: 2px;
-}
-
-.juicer-rig.squeeze .juice-drip {
-  height: 40px;
-}
-
-/* ============================================================
-   PILL LABELS
-============================================================ */
-.pill-label {
-  display: inline-block;
-  background: var(--lemon-bright);
-  color: var(--lemon-rind);
-  font-size: 0.7rem;
-  font-weight: 700;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  padding: 4px 14px;
-  border-radius: 999px;
-}
-
-/* ============================================================
-   SKILL CHIPS
-============================================================ */
-.skill-chip {
-  display: inline-block;
-  background: var(--accent-lt);
-  color: var(--accent-dark);
-  border: 1.5px solid var(--accent);
-  border-radius: 999px;
-  padding: 5px 14px;
-  font-size: 0.8rem;
-  font-weight: 600;
-  transition: background 0.2s ease, color 0.2s ease, transform 0.15s ease;
-}
-
-.skill-chip:hover {
-  background: var(--accent);
-  color: white;
-  transform: translateY(-2px);
-}
-
-/* ============================================================
-   LEMON PITCHER (contact section)
-============================================================ */
-.pitcher-img {
-  transition: transform 0.3s ease;
-  filter: drop-shadow(0 12px 28px rgba(0,0,0,0.15));
-}
-
-.pitcher-img:hover {
-  transform: scale(1.03) rotate(-1deg);
-}
-
-/* ============================================================
-   RECIPE BOOK GRID (all projects overlay)
-============================================================ */
-.recipe-card {
-  background: white;
-  border: 2px solid var(--lemon-bright);
-  border-radius: var(--radius-lg);
-  overflow: hidden;
-  cursor: pointer;
-  transition: transform 0.2s ease, box-shadow 0.2s ease;
-}
-
-.recipe-card:nth-child(odd)  { transform: rotate(-0.35deg); }
-.recipe-card:nth-child(even) { transform: rotate(0.35deg); }
-.recipe-card:hover { transform: rotate(0deg) translateY(-6px); box-shadow: 0 14px 32px var(--lemon-shadow); }
-
-/* ============================================================
-   HIDDEN JOKE SECTION (triple-click easter egg)
-============================================================ */
-#secret-joke {
-  max-height: 0;
-  overflow: hidden;
-  transition: max-height 0.6s ease, opacity 0.4s ease;
-  opacity: 0;
-}
-
-#secret-joke.revealed {
-  max-height: 200px;
-  opacity: 1;
-}
-
-/* ============================================================
-   MISC UTILITIES
-============================================================ */
-.text-display {
-  font-family: var(--font-display);
-}
-
-.dashed-border-bottom {
-  border-bottom: 2px dashed var(--lemon-bright);
-}
-
-/* nav active highlight */
-.nav-active {
-  background: var(--lemon-bright);
-  color: var(--text-dark) !important;
-}
+/* Contact layout */
+.contact-pitcher-layout{display:flex;align-items:center;justify-content:center;gap:28px;flex-wrap:wrap}
+.contact-btn-group{display:flex;flex-direction:column;gap:14px}
+.contact-btn{display:inline-flex;align-items:center;gap:10px;padding:14px 28px;border-radius:999px;font-weight:700;font-size:1rem;text-decoration:none;transition:transform .2s ease,box-shadow .2s ease;white-space:nowrap;min-width:176px;justify-content:center;font-family:var(--font-body)}
+.contact-btn:hover{transform:translateY(-3px);box-shadow:0 8px 24px rgba(0,0,0,.18)}

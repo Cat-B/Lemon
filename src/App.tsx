@@ -1,6 +1,5 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
-
 import Nav from './components/Nav';
 import Hero from './components/Hero';
 import About from './components/About';
@@ -11,127 +10,82 @@ import Wave from './components/Wave';
 import ProjectDetail from './components/ProjectDetail';
 import ProjectsGallery from './components/ProjectsGallery';
 
-// ─────────────────────────────────────────────────────────────────
-// JUICE SPLASH EASTER EGG
-// On every click anywhere, a small burst of lemon drops radiates
-// outward from the click point.
-// ─────────────────────────────────────────────────────────────────
+const JOKE = {
+  setup: 'Why did the lemon stop halfway across the road?',
+  punchline: 'It ran out of juice. 🍋',
+};
+
 function createJuiceSplash(x: number, y: number, isPink: boolean) {
-  const N = 6;
-  for (let i = 0; i < N; i++) {
+  for (let i = 0; i < 7; i++) {
     const el = document.createElement('div');
     el.className = 'juice-drop';
-
-    const angle = (360 / N) * i + Math.random() * 20;
-    const dist = 28 + Math.random() * 30;
+    const angle = (360 / 7) * i + Math.random() * 18;
+    const dist = 26 + Math.random() * 32;
     const rad = (angle * Math.PI) / 180;
-    const dx = Math.cos(rad) * dist;
-    const dy = Math.sin(rad) * dist;
     const size = 6 + Math.random() * 8;
-
     const colors = isPink
-      ? ['#FFB3D1', '#FF80B5', '#FFE4F0', '#C85A88']
-      : ['#FFE135', '#FFD000', '#FFF8C5', '#F0A500'];
-
-    const col = colors[Math.floor(Math.random() * colors.length)];
-
-    el.style.cssText = `
-      left: ${x}px;
-      top: ${y}px;
-      width: ${size}px;
-      height: ${size}px;
-      background: ${col};
-      --dx: ${dx}px;
-      --dy: ${dy}px;
-    `;
-
+      ? ['#F472B6','#FBCFE8','#EC4899','#FCE7F3']
+      : ['#FFE135','#FFD000','#FFF8C5','#F0A500'];
+    el.style.cssText = `left:${x}px;top:${y}px;width:${size}px;height:${size}px;background:${colors[Math.floor(Math.random()*colors.length)]};--dx:${Math.cos(rad)*dist}px;--dy:${Math.sin(rad)*dist}px`;
     document.body.appendChild(el);
     el.addEventListener('animationend', () => el.remove());
   }
 }
 
-// ─────────────────────────────────────────────────────────────────
-// SCROLL REVEAL
-// Watches all .reveal elements and adds .visible when in viewport.
-// ─────────────────────────────────────────────────────────────────
 function useScrollReveal() {
   useEffect(() => {
     const observer = new IntersectionObserver(
-      entries => {
-        entries.forEach(e => {
-          if (e.isIntersecting) {
-            e.target.classList.add('visible');
-          }
-        });
-      },
-      { threshold: 0.12, rootMargin: '0px 0px -40px 0px' }
+      entries => entries.forEach(e => { if (e.isIntersecting) e.target.classList.add('visible'); }),
+      { threshold: 0.04, rootMargin: '0px 0px -16px 0px' }
     );
-
-    const els = document.querySelectorAll('.reveal');
-    els.forEach(el => observer.observe(el));
-
+    document.querySelectorAll('.reveal').forEach(el => observer.observe(el));
     return () => observer.disconnect();
   });
 }
 
-// ─────────────────────────────────────────────────────────────────
-// MAIN PORTFOLIO PAGE
-// ─────────────────────────────────────────────────────────────────
 function Portfolio() {
   const [activeSection, setActiveSection] = useState('hero');
   const [isPinkMode, setIsPinkMode] = useState(false);
+  const [jokeVisible, setJokeVisible] = useState(false);
 
   useScrollReveal();
 
-  // ── Scroll progress bar ──
   useEffect(() => {
     const bar = document.getElementById('scroll-bar');
     const onScroll = () => {
       if (!bar) return;
-      const scrolled = window.scrollY;
       const total = document.documentElement.scrollHeight - window.innerHeight;
-      bar.style.width = total > 0 ? `${(scrolled / total) * 100}%` : '0%';
+      bar.style.width = total > 0 ? `${(window.scrollY / total) * 100}%` : '0%';
     };
     window.addEventListener('scroll', onScroll, { passive: true });
     return () => window.removeEventListener('scroll', onScroll);
   }, []);
 
-  // ── Active section tracker ──
   useEffect(() => {
-    const sections = ['hero', 'about', 'projects', 'experience', 'contact'];
+    const sections = ['hero','about','projects','experience','contact'];
     const onScroll = () => {
-      const scrollY = window.scrollY + 120;
+      const y = window.scrollY + 120;
       for (const id of sections) {
         const el = document.getElementById(id);
-        if (el && scrollY >= el.offsetTop && scrollY < el.offsetTop + el.offsetHeight) {
-          setActiveSection(id);
-          break;
-        }
+        if (el && y >= el.offsetTop && y < el.offsetTop + el.offsetHeight) { setActiveSection(id); break; }
       }
     };
     window.addEventListener('scroll', onScroll, { passive: true });
     return () => window.removeEventListener('scroll', onScroll);
   }, []);
 
-  // ── Juice splash on click ──
   useEffect(() => {
     const onClick = (e: MouseEvent) => {
-      // Don't splash on interactive elements to avoid visual noise on buttons
       const tag = (e.target as HTMLElement).tagName.toLowerCase();
-      if (['a', 'button', 'input', 'textarea'].includes(tag)) return;
+      if (['a','button','input','textarea'].includes(tag)) return;
       createJuiceSplash(e.clientX, e.clientY, isPinkMode);
     };
     window.addEventListener('click', onClick);
     return () => window.removeEventListener('click', onClick);
   }, [isPinkMode]);
 
-  // ── Pink mode toggle (applied to html element for CSS variable overrides) ──
   useEffect(() => {
-    if (isPinkMode) {
-      document.documentElement.classList.add('pink-mode');
-    } else {
-      document.documentElement.classList.remove('pink-mode');
-    }
+    document.documentElement.classList.toggle('pink-mode', isPinkMode);
   }, [isPinkMode]);
 
   const scrollTo = useCallback((id: string) => {
@@ -140,58 +94,47 @@ function Portfolio() {
 
   return (
     <div style={{ background: 'var(--bg-hero)' }}>
-      {/* Fixed scroll progress bar */}
       <div id="scroll-bar" />
 
       <Nav
         activeSection={activeSection}
         isPinkMode={isPinkMode}
         onScrollTo={scrollTo}
+        onJokeReveal={() => setJokeVisible(v => !v)}
       />
+
+      {/* SECRET JOKE BANNER — slides down from top after triple-click */}
+      <div className={`joke-banner${jokeVisible ? ' revealed' : ''}`}
+        style={{ background: 'var(--lemon-bright)', borderBottom: '2px dashed var(--accent)' }}
+      >
+        <div style={{ maxWidth: '700px', margin: '0 auto', padding: '20px 32px', textAlign: 'center' }}>
+          <p style={{ fontSize: '.7rem', fontWeight: 700, letterSpacing: '.12em', textTransform: 'uppercase', color: 'var(--lemon-rind)', marginBottom: '6px' }}>
+            🤫 you found the secret
+          </p>
+          <p className="font-display" style={{ fontSize: '1.15rem', fontWeight: 700, color: 'var(--text-dark)', marginBottom: '4px' }}>
+            {JOKE.setup}
+          </p>
+          <p className="font-display" style={{ fontSize: '1.05rem', fontStyle: 'italic', color: 'var(--accent-dark)' }}>
+            {JOKE.punchline}
+          </p>
+        </div>
+      </div>
 
       <main>
         <Hero onScrollTo={scrollTo} />
-
-        <Wave
-          fromColor="var(--bg-hero)"
-          toColor="var(--bg-about)"
-        />
-
+        <Wave fromColor="var(--bg-hero)" toColor="var(--bg-about)" />
         <About />
-
-        <Wave
-          fromColor="var(--bg-about)"
-          toColor="var(--bg-projects)"
-          flip
-        />
-
+        <Wave fromColor="var(--bg-about)" toColor="var(--bg-projects)" flip />
         <Projects />
-
-        <Wave
-          fromColor="var(--bg-projects)"
-          toColor="var(--bg-experience)"
-        />
-
+        <Wave fromColor="var(--bg-projects)" toColor="var(--bg-experience)" />
         <Experience />
-
-        <Wave
-          fromColor="var(--bg-experience)"
-          toColor="var(--bg-contact)"
-          flip
-        />
-
-        <Contact
-          isPinkMode={isPinkMode}
-          onTogglePink={() => setIsPinkMode(p => !p)}
-        />
+        <Wave fromColor="var(--bg-experience)" toColor="var(--bg-contact)" flip />
+        <Contact isPinkMode={isPinkMode} onTogglePink={() => setIsPinkMode(p => !p)} />
       </main>
     </div>
   );
 }
 
-// ─────────────────────────────────────────────────────────────────
-// APP ROOT — React Router
-// ─────────────────────────────────────────────────────────────────
 export default function App() {
   return (
     <Router>

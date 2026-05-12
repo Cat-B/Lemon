@@ -1,118 +1,101 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { ChevronLeft, ChevronRight, ExternalLink, X, BookOpen } from 'lucide-react';
+import { ChevronLeft, ChevronRight, X, BookOpen, ExternalLink } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { projectsData } from '../data/content';
 
 // ─────────────────────────────────────────────────────────────────
-// CAROUSEL DESIGN NOTES
+// CAROUSEL CONSTANTS
 //
-// Strategy: Cloned-edge infinite loop
-//   - We keep N_CLONES copies of the end cards prepended,
-//     and N_CLONES copies of the start cards appended.
-//   - When we reach a clone edge, we silently jump (no animation)
-//     to the real counterpart.
-//   - The center card index is tracked and used to apply the
-//     is-center CSS class for the enlarged treatment.
-//   - Cards are 300px wide + 20px gap. The visible window shows
-//     the center card at full size, neighbors at 88%.
+// All cards are the same DOM width (CARD_W). CSS scale makes the
+// center one look larger. Only 3 cards visible at once:
+//   - center: scale(1.0), full opacity  → visually ~520px on desktop
+//   - ±1:     scale(0.78), 0.82 opacity → visually ~320px each
+//   - ±2+:    opacity 0                 → hidden
 //
-// Touch/drag:
-//   - pointerdown / pointermove / pointerup for drag
-//   - threshold 40px to trigger a slide
+// Infinite loop via N_CLONES cloned cards at each end.
+// When we land on a clone, we silently jump to the real counterpart.
 //
-// Juicer:
-//   - Every time the active index changes, the juicer gets class "squeeze"
-//     for 600ms, then it's removed.
+// Scroll wheel (horizontal OR vertical on the carousel area)
+// triggers next/prev with a 520ms debounce so it doesn't fire rapidly.
+// Touch/drag works via pointer events (40px drag threshold).
 // ─────────────────────────────────────────────────────────────────
 
-const CARD_WIDTH = 300;
-const CARD_GAP = 20;
-const CARD_STEP = CARD_WIDTH + CARD_GAP;
-const N_CLONES = 2; // clones on each side
+const CARD_W   = 400;    // DOM width of every card in px
+const CARD_GAP = 32;     // gap between cards in px
+const CARD_STEP = CARD_W + CARD_GAP;
+const N_CLONES  = 2;
+
+// Visual width of the juicer A+D container — matches scaled center card
+const JUICER_CENTER_W = 420; // slightly wider than CARD_W to align with card border
 
 export default function Projects() {
   const navigate = useNavigate();
   const projects = projectsData;
 
-  // Build the cloned list: [...last N, ...all, ...first N]
-  const clonedProjects = [
-    ...projects.slice(-N_CLONES),
-    ...projects,
-    ...projects.slice(0, N_CLONES),
-  ];
+  // Cloned list: [...last N clones, ...all real, ...first N clones]
+  const cloned = [...projects.slice(-N_CLONES), ...projects, ...projects.slice(0, N_CLONES)];
 
-  // Real index within clonedProjects (starts at N_CLONES so first real card is center)
-  const [trackIndex, setTrackIndex] = useState(N_CLONES);
+  const [trackIdx, setTrackIdx] = useState(N_CLONES); // start on first real card
   const [isAnimating, setIsAnimating] = useState(false);
-  const [squeezing, setSqueezing] = useState(false);
+  const [squeezeKey, setSqueezeKey] = useState(0);    // increment to re-trigger animation
+  const [isMoving, setIsMoving] = useState(false);
   const [showAll, setShowAll] = useState(false);
+  const [containerW, setContainerW] = useState(0);
 
-  const trackRef = useRef<HTMLDivElement>(null);
-  const outerRef = useRef<HTMLDivElement>(null);
+  const outerRef   = useRef<HTMLDivElement>(null);
   const dragStartX = useRef(0);
-  const dragCurrentX = useRef(0);
+  const dragCurX   = useRef(0);
   const isDragging = useRef(false);
+  const lastWheel  = useRef(0);
+  const animTimer  = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Real project index (0-based within projects array)
-  const realIndex = trackIndex - N_CLONES;
+  // Real index (0-based within projects array)
+  const realIdx = ((trackIdx - N_CLONES) % projects.length + projects.length) % projects.length;
 
-  // ── Compute translateX so the center card is centered in the viewport ──
-  const computeTranslate = useCallback((idx: number, containerWidth: number) => {
-    // Center of container
-    const center = containerWidth / 2;
-    // Left edge of card at idx
-    const cardLeft = idx * CARD_STEP;
-    // We want cardLeft + CARD_WIDTH/2 = center
-    return center - cardLeft - CARD_WIDTH / 2;
-  }, []);
-
-  const [containerWidth, setContainerWidth] = useState(0);
-
+  // Measure container width
   useEffect(() => {
-    const measure = () => {
-      if (outerRef.current) setContainerWidth(outerRef.current.offsetWidth);
-    };
+    const measure = () => { if (outerRef.current) setContainerW(outerRef.current.offsetWidth); };
     measure();
-    window.addEventListener('resize', measure);
-    return () => window.removeEventListener('resize', measure);
+    const ro = new ResizeObserver(measure);
+    if (outerRef.current) ro.observe(outerRef.current);
+    return () => ro.disconnect();
   }, []);
 
-  const translateX = containerWidth ? computeTranslate(trackIndex, containerWidth) : 0;
+  // translateX so the center card sits at the horizontal midpoint
+  const translateX = containerW
+    ? containerW / 2 - trackIdx * CARD_STEP - CARD_W / 2
+    : 0;
 
-  // ── Navigate to a track index ──
+  // ── Navigate ──
   const goTo = useCallback((newIdx: number, animate = true) => {
     if (isAnimating) return;
-    setIsAnimating(animate);
-    setTrackIndex(newIdx);
 
-    // Trigger juicer squeeze
-    setSqueezing(true);
-    setTimeout(() => setSqueezing(false), 600);
+    setIsAnimating(animate);
+    setTrackIdx(newIdx);
+
+    // trigger squeeze animation on the lemon
+    setIsMoving(true);
+    setSqueezeKey(k => k + 1);
+    setTimeout(() => setIsMoving(false), 600);
 
     if (animate) {
-      setTimeout(() => {
-        // After animation, check if we're on a clone edge and jump silently
+      if (animTimer.current) clearTimeout(animTimer.current);
+      animTimer.current = setTimeout(() => {
         setIsAnimating(false);
-        setTrackIndex(prev => {
-          const total = clonedProjects.length;
-          if (prev < N_CLONES) {
-            // jumped past left edge — jump to real counterpart
-            return prev + projects.length;
-          }
-          if (prev >= total - N_CLONES) {
-            // jumped past right edge
-            return prev - projects.length;
-          }
+        // Silent-jump if we landed on a clone
+        setTrackIdx(prev => {
+          if (prev < N_CLONES) return prev + projects.length;
+          if (prev >= N_CLONES + projects.length) return prev - projects.length;
           return prev;
         });
-      }, 460);
+      }, 430);
     }
-  }, [isAnimating, clonedProjects.length, projects.length]);
+  }, [isAnimating, projects.length]);
 
-  const prev = () => goTo(trackIndex - 1);
-  const next = () => goTo(trackIndex + 1);
+  const prev = useCallback(() => goTo(trackIdx - 1), [goTo, trackIdx]);
+  const next = useCallback(() => goTo(trackIdx + 1), [goTo, trackIdx]);
 
-  // ── Keyboard navigation ──
+  // ── Keyboard ──
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'ArrowLeft') prev();
@@ -120,187 +103,215 @@ export default function Projects() {
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  });
+  }, [prev, next]);
 
-  // ── Drag/touch ──
+  // ── Wheel scroll (horizontal trackpad swipe or mouse wheel over carousel) ──
+  useEffect(() => {
+    const el = outerRef.current;
+    if (!el) return;
+    const onWheel = (e: WheelEvent) => {
+      const now = Date.now();
+      if (now - lastWheel.current < 520) return;
+      // Respond to both horizontal (deltaX) and vertical (deltaY) with threshold
+      const dx = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
+      if (Math.abs(dx) < 18) return;
+      lastWheel.current = now;
+      dx > 0 ? next() : prev();
+      // Prevent page scroll while interacting with carousel
+      e.preventDefault();
+    };
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => el.removeEventListener('wheel', onWheel);
+  }, [next, prev]);
+
+  // ── Drag / touch ──
   const onPointerDown = (e: React.PointerEvent) => {
     isDragging.current = true;
     dragStartX.current = e.clientX;
-    dragCurrentX.current = e.clientX;
+    dragCurX.current   = e.clientX;
     (e.target as HTMLElement).setPointerCapture(e.pointerId);
   };
-
   const onPointerMove = (e: React.PointerEvent) => {
-    if (!isDragging.current) return;
-    dragCurrentX.current = e.clientX;
+    if (isDragging.current) dragCurX.current = e.clientX;
   };
-
   const onPointerUp = () => {
     if (!isDragging.current) return;
     isDragging.current = false;
-    const delta = dragStartX.current - dragCurrentX.current;
-    if (Math.abs(delta) > 40) {
-      delta > 0 ? next() : prev();
-    }
+    const delta = dragStartX.current - dragCurX.current;
+    if (Math.abs(delta) > 40) { delta > 0 ? next() : prev(); }
   };
 
-  // ── Click on a dot ──
-  const goToReal = (realIdx: number) => {
-    goTo(realIdx + N_CLONES);
+  // ── Card click ──
+  const handleCardClick = (cloneI: number) => {
+    if (cloneI !== trackIdx) { goTo(cloneI); return; }
+    // center card → navigate to detail
+    const ri = ((cloneI - N_CLONES) % projects.length + projects.length) % projects.length;
+    navigate(`/project/${projects[ri].id}`);
   };
 
-  // ── Click on a card ──
-  const handleCardClick = (cloneIdx: number) => {
-    // If it's not the center, navigate carousel to it
-    if (cloneIdx !== trackIndex) {
-      goTo(cloneIdx);
-      return;
-    }
-    // Center card click → navigate to detail page
-    const ri = cloneIdx - N_CLONES;
-    const safeRi = ((ri % projects.length) + projects.length) % projects.length;
-    navigate(`/project/${projects[safeRi].id}`);
-  };
+  // Determine visual state for a given clone index
+  const dist = (i: number) => Math.abs(i - trackIdx);
 
   return (
-    <section id="projects" style={{ background: 'var(--bg-projects)', padding: '80px 0 80px' }}>
+    <section id="projects" style={{ background: 'var(--bg-projects)', padding: '56px 0 56px' }}>
 
-      {/* Header */}
-      <div className="text-center mb-8 px-8 reveal">
-        <span className="pill-label">🍋 My Work</span>
-        <h2
-          className="font-display mt-3 mb-3"
-          style={{ fontSize: 'clamp(1.9rem, 3.5vw, 2.8rem)', fontWeight: 800, color: 'var(--text-dark)' }}
-        >
+      {/* Single impactful header */}
+      <div className="text-center mb-4 px-8 reveal">
+        <h2 className="font-display"
+          style={{ fontSize: 'clamp(2rem, 3.8vw, 3rem)', fontWeight: 800, color: 'var(--text-dark)' }}>
           Projects, freshly squeezed.
         </h2>
-        <p style={{ color: 'var(--text-mid)', maxWidth: '440px', margin: '0 auto', lineHeight: 1.75, fontSize: '0.95rem' }}>
-          Drag or use arrows to spin the carousel. Click the center card to open the full project.
+        <p style={{ color: 'var(--text-mid)', maxWidth: '420px', margin: '8px auto 0', lineHeight: 1.7, fontSize: '.93rem' }}>
+          Swipe, scroll, or use arrows — click the center card to open it.
         </p>
       </div>
 
-      {/* ── JUICER SCENE ──
-          Sits above the carousel. Tilts + drips when carousel moves.
-          SWAP: replace the emoji spans with your Procreate juicer/lemon images.
-          e.g. <img src="./juicer.png" style={{ width:'80px' }} alt="" />
-      */}
-      <div className="flex justify-center items-end gap-8 mb-6 reveal delay-1" style={{ height: '110px' }}>
-        {/* Waiting lemon — SWAP with <img src="./lemon.png"> */}
-        <span
-          aria-hidden="true"
-          style={{ fontSize: '2.8rem', alignSelf: 'flex-end', marginBottom: '8px' }}
-        >
-          🍋
-        </span>
+      {/* ══════════════════════════════════════════════════════════
+          JUICER SCENE — Images A / B / C / D
+          ══════════════════════════════════════════════════════════
+          Image A  →  juicer body (static, same width as center card)
+          Image B  →  left desktop filler (static)
+          Image C  →  right desktop filler (static)
+          Image D  →  lemon being squeezed (animates on carousel move)
 
-        {/* Juicer rig */}
-        <div className={`juicer-rig${squeezing ? ' squeeze' : ''}`} aria-hidden="true">
-          {/* SWAP with <img src="./juicer.png" style={{ width:'72px' }} alt="Juicer" /> */}
-          <span style={{ fontSize: '4rem', lineHeight: 1 }}>🍋</span>
-          {/* Juice drip bar */}
-          <div className="juice-drip" />
+          TO SWAP WITH YOUR PROCREATE ART:
+            Image A: replace the SVG inside .juicer-a-inner with:
+              <img src="./juicer-body.png" style={{width:'100%',height:'100%',objectFit:'contain',objectPosition:'bottom'}} alt="" />
+            Image B: replace gradient div with:
+              <img src="./juicer-bg-left.png" style={{width:'100%',height:'100%',objectFit:'cover',objectPosition:'right bottom'}} alt="" />
+            Image C: same for ./juicer-bg-right.png
+            Image D: replace the SVG inside .lemon-d-inner with:
+              <img src="./lemon-squeeze.png" style={{width:'80%',objectFit:'contain'}} alt="" />
+      ══════════════════════════════════════════════════════════ */}
+      <div className="juicer-scene reveal delay-1" style={{ height: '130px', marginBottom: '0' }}>
+
+        {/* Image B — left desktop filler */}
+        <div className="juicer-filler" style={{ height: '130px' }}>
+          {/* SWAP: <img src="./juicer-bg-left.png" style={{width:'100%',height:'100%',objectFit:'cover',objectPosition:'right bottom'}} alt="" /> */}
+          <div style={{ width: '100%', height: '100%', background: 'linear-gradient(to right, transparent 0%, var(--lemon-pale) 90%)', display: 'flex', alignItems: 'flex-end', justifyContent: 'flex-end', padding: '0 8px 4px 0' }}>
+            <span style={{ fontSize: '.75rem', opacity: 0.35, fontStyle: 'italic', color: 'var(--text-light)' }}>
+              ← SWAP: juicer-bg-left.png
+            </span>
+          </div>
         </div>
 
-        {/* Juiced half — SWAP with <img src="./lemon-half.png"> */}
-        <span
-          aria-hidden="true"
-          style={{ fontSize: '2rem', alignSelf: 'flex-end', marginBottom: '6px', opacity: 0.55, transform: 'rotate(18deg)' }}
-        >
-          🍋
-        </span>
+        {/* Images A + D — centered, width matches visual center card */}
+        <div className="juicer-center" style={{ width: `${JUICER_CENTER_W}px`, height: '130px' }}>
+
+          {/* Image A — juicer body (static) */}
+          {/* SWAP: replace SVG with <img src="./juicer-body.png" ...> */}
+          <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'flex-end', justifyContent: 'center', pointerEvents: 'none' }}>
+            <svg width="220" height="110" viewBox="0 0 220 110" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+              {/* Juicer base */}
+              <rect x="30" y="78" width="160" height="28" rx="8" fill="var(--lemon-zest)" opacity="0.9"/>
+              <rect x="50" y="68" width="120" height="14" rx="6" fill="var(--accent)" opacity="0.8"/>
+              {/* Cone reamer */}
+              <polygon points="110,10 75,66 145,66" fill="var(--lemon-bright)" stroke="var(--lemon-zest)" strokeWidth="2"/>
+              <line x1="110" y1="10" x2="110" y2="66" stroke="var(--lemon-zest)" strokeWidth="1.5" opacity="0.5"/>
+              <line x1="92" y1="38" x2="128" y2="38" stroke="var(--lemon-zest)" strokeWidth="1.5" opacity="0.5"/>
+              {/* Spout */}
+              <rect x="98" y="82" width="24" height="20" rx="4" fill="var(--lemon-rind)" opacity="0.5"/>
+            </svg>
+          </div>
+
+          {/* Image D — lemon being squeezed (animates on carousel move) */}
+          {/* key prop forces remount → re-triggers CSS animation each time */}
+          <div
+            key={squeezeKey}
+            className={`lemon-d${isMoving ? ' squeezing' : ''}`}
+            style={{ pointerEvents: 'none' }}
+          >
+            {/* SWAP: replace SVG with <img src="./lemon-squeeze.png" style={{width:'70px',objectFit:'contain'}} alt="" /> */}
+            <svg width="80" height="70" viewBox="0 0 80 70" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+              {/* Lemon half sitting on reamer */}
+              <ellipse cx="40" cy="42" rx="34" ry="24" fill="var(--lemon-bright)" stroke="var(--lemon-zest)" strokeWidth="2"/>
+              <ellipse cx="40" cy="42" rx="24" ry="16" fill="var(--lemon-pale)" opacity="0.6"/>
+              <line x1="40" y1="26" x2="40" y2="58" stroke="var(--lemon-zest)" strokeWidth="1.5" opacity="0.5"/>
+              <line x1="6" y1="42" x2="74" y2="42" stroke="var(--lemon-zest)" strokeWidth="1.5" opacity="0.5"/>
+              {/* Juice drips */}
+              <path d="M26,60 Q24,68 22,72" stroke="var(--lemon-zest)" strokeWidth="2" fill="none" strokeLinecap="round" opacity="0.6"/>
+              <path d="M40,62 Q40,70 40,74" stroke="var(--lemon-zest)" strokeWidth="2" fill="none" strokeLinecap="round" opacity="0.5"/>
+              <path d="M54,60 Q56,68 58,72" stroke="var(--lemon-zest)" strokeWidth="2" fill="none" strokeLinecap="round" opacity="0.6"/>
+            </svg>
+          </div>
+        </div>
+
+        {/* Image C — right desktop filler */}
+        <div className="juicer-filler" style={{ height: '130px' }}>
+          {/* SWAP: <img src="./juicer-bg-right.png" style={{width:'100%',height:'100%',objectFit:'cover',objectPosition:'left bottom'}} alt="" /> */}
+          <div style={{ width: '100%', height: '100%', background: 'linear-gradient(to left, transparent 0%, var(--lemon-pale) 90%)', display: 'flex', alignItems: 'flex-end', justifyContent: 'flex-start', padding: '0 0 4px 8px' }}>
+            <span style={{ fontSize: '.75rem', opacity: 0.35, fontStyle: 'italic', color: 'var(--text-light)' }}>
+              SWAP: juicer-bg-right.png →
+            </span>
+          </div>
+        </div>
       </div>
 
-      {/* ── CAROUSEL ── */}
+      {/* ══════════════════════════════════════════════════════════
+          CAROUSEL TRACK
+      ══════════════════════════════════════════════════════════ */}
       <div
         ref={outerRef}
         className="carousel-outer"
-        style={{ padding: '20px 0 30px' }}
+        style={{ padding: '24px 0 32px' }}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
         onPointerLeave={onPointerUp}
       >
         <div
-          ref={trackRef}
           className={`carousel-track${isAnimating ? ' is-animating' : ''}`}
-          style={{
-            transform: `translateX(${translateX}px)`,
-            paddingLeft: `0px`,
-          }}
+          style={{ transform: `translateX(${translateX}px)`, gap: `${CARD_GAP}px` }}
         >
-          {clonedProjects.map((project, idx) => {
-            const isCenter = idx === trackIndex;
+          {cloned.map((project, i) => {
+            const d = dist(i);
+            const isCenter = d === 0;
+            const isAdjacent = d === 1;
+            // Everything beyond ±1 is hidden (opacity 0) — enforces 3-tile rule
+            const cardClass = isCenter ? 'project-card is-center' : isAdjacent ? 'project-card is-adjacent' : 'project-card';
+
             return (
               <div
-                key={`${project.id}-${idx}`}
-                className={`project-card${isCenter ? ' is-center' : ''}`}
-                onClick={() => handleCardClick(idx)}
+                key={`${project.id}-${i}`}
+                className={cardClass}
+                style={{ width: `${CARD_W}px` }}
+                onClick={() => handleCardClick(i)}
                 role="button"
                 tabIndex={isCenter ? 0 : -1}
-                aria-label={isCenter ? `Open project: ${project.title}` : `Go to project: ${project.title}`}
-                onKeyDown={e => { if (e.key === 'Enter') handleCardClick(idx); }}
+                aria-label={isCenter ? `Open: ${project.title}` : `Go to: ${project.title}`}
+                onKeyDown={e => { if (e.key === 'Enter') handleCardClick(i); }}
               >
                 {/* Card image */}
-                <div
-                  style={{ height: '160px', overflow: 'hidden', background: 'var(--lemon-pale)', position: 'relative' }}
-                >
+                <div style={{ height: '200px', overflow: 'hidden', background: 'var(--lemon-pale)', position: 'relative' }}>
                   <img
                     src={project.image}
                     alt={project.title}
                     style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                     draggable={false}
                   />
-                  {/* Dessert watermark — subtle lemon dessert on each project */}
-                  <span
-                    aria-hidden="true"
-                    style={{
-                      position: 'absolute',
-                      bottom: '8px',
-                      right: '10px',
-                      fontSize: '1.6rem',
-                      opacity: 0.35,
-                      pointerEvents: 'none',
-                    }}
-                  >
+                  {/* Dessert watermark */}
+                  <span aria-hidden="true" style={{ position: 'absolute', bottom: '8px', right: '12px', fontSize: '1.8rem', opacity: .3, pointerEvents: 'none' }}>
                     {project.dessertEmoji}
                   </span>
                 </div>
 
                 {/* Card body */}
-                <div style={{ padding: '16px' }}>
+                <div style={{ padding: '18px 20px 20px' }}>
                   <div className="flex flex-wrap gap-1 mb-2">
                     {project.tech.slice(0, 2).map(t => (
-                      <span
-                        key={t}
-                        style={{
-                          background: 'var(--lemon-pale)',
-                          color: 'var(--lemon-rind)',
-                          fontSize: '0.65rem',
-                          fontWeight: 700,
-                          padding: '2px 8px',
-                          borderRadius: '999px',
-                          border: '1px solid var(--lemon-bright)',
-                          letterSpacing: '0.05em',
-                          textTransform: 'uppercase',
-                        }}
-                      >
+                      <span key={t} style={{ background: 'var(--lemon-pale)', color: 'var(--lemon-rind)', fontSize: '.65rem', fontWeight: 700, padding: '2px 9px', borderRadius: '999px', border: '1px solid var(--lemon-bright)', letterSpacing: '.04em', textTransform: 'uppercase' }}>
                         {t}
                       </span>
                     ))}
                   </div>
-
-                  <h3
-                    className="font-display mb-1"
-                    style={{ fontSize: '1.05rem', fontWeight: 700, color: 'var(--text-dark)', lineHeight: 1.25 }}
-                  >
+                  <h3 className="font-display mb-1.5" style={{ fontSize: '1.1rem', fontWeight: 700, color: 'var(--text-dark)', lineHeight: 1.2 }}>
                     {project.title}
                   </h3>
-                  <p style={{ fontSize: '0.82rem', color: 'var(--text-mid)', lineHeight: 1.55 }}>
+                  <p style={{ fontSize: '.85rem', color: 'var(--text-mid)', lineHeight: 1.6 }}>
                     {project.shortDescription}
                   </p>
-
                   {isCenter && (
-                    <p style={{ fontSize: '0.75rem', color: 'var(--accent)', fontWeight: 600, marginTop: '10px' }}>
+                    <p style={{ fontSize: '.78rem', color: 'var(--accent)', fontWeight: 700, marginTop: '12px' }}>
                       Click to explore →
                     </p>
                   )}
@@ -311,132 +322,88 @@ export default function Projects() {
         </div>
       </div>
 
-      {/* ── Navigation: prev / dots / next ── */}
-      <div className="flex items-center justify-center gap-4 mt-2">
-        <button
-          onClick={prev}
+      {/* Navigation: prev / dots / next */}
+      <div className="flex items-center justify-center gap-4 px-8">
+        <button onClick={prev}
           className="w-11 h-11 rounded-full flex items-center justify-center transition-all duration-200 hover:scale-110"
           style={{ border: '2px solid var(--lemon-bright)', background: 'white', cursor: 'pointer' }}
-          aria-label="Previous project"
-        >
+          aria-label="Previous">
           <ChevronLeft size={20} style={{ color: 'var(--text-dark)' }} />
         </button>
 
         <div className="flex gap-2">
           {projects.map((_, i) => (
-            <button
-              key={i}
-              onClick={() => goToReal(i)}
-              aria-label={`Go to project ${i + 1}`}
-              style={{
-                width: realIndex === i ? '24px' : '10px',
-                height: '10px',
-                borderRadius: '999px',
-                background: realIndex === i ? 'var(--lemon-bright)' : 'var(--accent-lt)',
-                border: '1.5px solid var(--accent)',
-                cursor: 'pointer',
-                transition: 'all 0.3s ease',
-                padding: 0,
-              }}
+            <button key={i}
+              onClick={() => goTo(i + N_CLONES)}
+              aria-label={`Project ${i + 1}`}
+              style={{ width: realIdx === i ? '22px' : '10px', height: '10px', borderRadius: '999px', background: realIdx === i ? 'var(--lemon-bright)' : 'var(--accent-lt)', border: '1.5px solid var(--accent)', cursor: 'pointer', transition: 'all .3s ease', padding: 0 }}
             />
           ))}
         </div>
 
-        <button
-          onClick={next}
+        <button onClick={next}
           className="w-11 h-11 rounded-full flex items-center justify-center transition-all duration-200 hover:scale-110"
           style={{ border: '2px solid var(--lemon-bright)', background: 'white', cursor: 'pointer' }}
-          aria-label="Next project"
-        >
+          aria-label="Next">
           <ChevronRight size={20} style={{ color: 'var(--text-dark)' }} />
         </button>
       </div>
 
-      {/* ── See All button ── */}
-      <div className="text-center mt-8 px-8">
-        <button
-          onClick={() => setShowAll(true)}
+      {/* See All button */}
+      <div className="text-center mt-7 px-8">
+        <button onClick={() => setShowAll(true)}
           className="inline-flex items-center gap-2 px-6 py-3 rounded-full font-semibold text-sm border-2 transition-all duration-200 hover:-translate-y-1"
-          style={{ borderColor: 'var(--lemon-bright)', background: 'white', color: 'var(--text-dark)', boxShadow: '0 4px 14px var(--lemon-shadow)' }}
-        >
-          <BookOpen size={16} />
-          See All Projects — Recipe Book View
+          style={{ borderColor: 'var(--lemon-bright)', background: 'white', color: 'var(--text-dark)', boxShadow: '0 4px 14px var(--lemon-shadow)', cursor: 'pointer' }}>
+          <BookOpen size={16} /> See All Projects — Recipe Book View
         </button>
       </div>
 
       {/* ── RECIPE BOOK OVERLAY ── */}
       {showAll && (
-        <div
-          className="fixed inset-0 z-50 overflow-y-auto"
-          style={{ background: 'var(--bg-projects)' }}
-        >
-          <div style={{ maxWidth: '1100px', margin: '0 auto', padding: '40px 32px' }}>
-
-            {/* Header */}
+        <div className="fixed inset-0 z-50 overflow-y-auto" style={{ background: 'var(--bg-projects)' }}>
+          <div style={{ maxWidth: '1320px', margin: '0 auto', padding: '40px 32px' }}>
             <div className="flex items-center justify-between mb-10">
               <div>
                 <h2 className="font-display" style={{ fontSize: '2.2rem', fontWeight: 800, color: 'var(--text-dark)' }}>
                   📖 The Recipe Book
                 </h2>
-                <p style={{ color: 'var(--text-mid)', marginTop: '4px', fontSize: '0.92rem' }}>
-                  All projects — click any card to open it.
-                </p>
+                <p style={{ color: 'var(--text-mid)', marginTop: '4px', fontSize: '.92rem' }}>All projects — click any card to open it.</p>
               </div>
-              <button
-                onClick={() => setShowAll(false)}
-                className="w-10 h-10 rounded-full flex items-center justify-center border-2 hover:bg-yellow-100 transition-colors"
+              <button onClick={() => setShowAll(false)}
+                className="w-10 h-10 rounded-full flex items-center justify-center border-2"
                 style={{ borderColor: 'var(--lemon-bright)', background: 'white', cursor: 'pointer' }}
-                aria-label="Close recipe book"
-              >
+                aria-label="Close">
                 <X size={18} />
               </button>
             </div>
-
-            {/* Recipe card grid */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-              {[...projectsData].sort((a, b) => b.id - a.id).map(project => (
-                <div
-                  key={project.id}
-                  className="recipe-card"
+              {[...projectsData].sort((a,b) => b.id - a.id).map(project => (
+                <div key={project.id} className="recipe-card"
                   onClick={() => { setShowAll(false); navigate(`/project/${project.id}`); }}
-                  role="button"
-                  tabIndex={0}
-                  onKeyDown={e => { if (e.key === 'Enter') { setShowAll(false); navigate(`/project/${project.id}`); }}}
-                >
-                  {/* Recipe card top image */}
-                  <div style={{ height: '130px', overflow: 'hidden', background: 'var(--lemon-pale)', position: 'relative' }}>
-                    <img
-                      src={project.image}
-                      alt={project.title}
-                      style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                    />
-                    {/* Dessert emoji watermark */}
-                    <span
-                      aria-hidden="true"
-                      style={{ position: 'absolute', bottom: '8px', right: '10px', fontSize: '1.4rem', opacity: 0.4 }}
-                    >
+                  role="button" tabIndex={0}
+                  onKeyDown={e => { if (e.key==='Enter') { setShowAll(false); navigate(`/project/${project.id}`); }}}>
+                  <div style={{ height: '140px', overflow: 'hidden', position: 'relative' }}>
+                    <img src={project.image} alt={project.title} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    <span aria-hidden="true" style={{ position: 'absolute', bottom: '8px', right: '10px', fontSize: '1.4rem', opacity: .35 }}>
                       {project.dessertEmoji}
                     </span>
                   </div>
-
                   <div style={{ padding: '14px 18px 18px' }}>
-                    <p style={{ fontSize: '0.7rem', fontWeight: 700, color: 'var(--lemon-rind)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '4px' }}>
+                    <p style={{ fontSize: '.7rem', fontWeight: 700, color: 'var(--lemon-rind)', textTransform: 'uppercase', letterSpacing: '.08em', marginBottom: '4px' }}>
                       {project.dessertName}
                     </p>
                     <h3 className="font-display mb-1" style={{ fontSize: '1.02rem', fontWeight: 700, color: 'var(--text-dark)' }}>
                       {project.title}
                     </h3>
-                    <p style={{ fontSize: '0.83rem', color: 'var(--text-mid)', lineHeight: 1.55, marginBottom: '10px' }}>
+                    <p style={{ fontSize: '.83rem', color: 'var(--text-mid)', lineHeight: 1.5, marginBottom: '10px' }}>
                       {project.shortDescription}
                     </p>
-                    <div className="flex flex-wrap gap-1">
-                      {project.tech.slice(0, 3).map(t => (
-                        <span key={t} style={{ background: 'var(--lemon-pale)', color: 'var(--lemon-rind)', fontSize: '0.68rem', fontWeight: 700, padding: '2px 8px', borderRadius: '999px', border: '1px solid var(--lemon-bright)' }}>
-                          {t}
-                        </span>
+                    <div className="flex flex-wrap gap-1 mb-3">
+                      {project.tech.slice(0,3).map(t => (
+                        <span key={t} style={{ background: 'var(--lemon-pale)', color: 'var(--lemon-rind)', fontSize: '.68rem', fontWeight: 700, padding: '2px 8px', borderRadius: '999px', border: '1px solid var(--lemon-bright)' }}>{t}</span>
                       ))}
                     </div>
-                    <div className="flex items-center gap-1 mt-3" style={{ color: 'var(--accent)', fontSize: '0.78rem', fontWeight: 600 }}>
+                    <div className="inline-flex items-center gap-1" style={{ color: 'var(--accent)', fontSize: '.8rem', fontWeight: 600 }}>
                       View Recipe <ExternalLink size={12} />
                     </div>
                   </div>
